@@ -1,0 +1,14 @@
+.dotnet/
+.cli/
+.nuget/
+bin/
+obj/
+dist/
+tests/bin/
+tests/obj/
+tests/fixtures/
+dotnet-install.ps1
+dashboard-preview.png
+portable-preview.png
+v2-*.png
+*.png.result.txt
