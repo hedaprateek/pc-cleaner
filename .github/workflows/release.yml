@@ -39,7 +39,8 @@ jobs:
           $smokeOutput = Join-Path $PWD 'release/smoke.png'
           Start-Process -FilePath (Join-Path $PWD 'release/app/PC Companion.exe') -ArgumentList @('--ui-smoke-test',$smokeOutput) -WindowStyle Hidden -Wait
           $result = Get-Content -LiteralPath ($smokeOutput + '.result.txt') -Raw
-          if (-not $result.StartsWith('PASS:')) { throw 'Interface smoke test failed' }
+          Write-Host $result
+          if (-not $result.StartsWith('PASS:')) { throw ('Interface smoke test failed: ' + $result) }
           Copy-Item -LiteralPath 'START HERE.txt' -Destination 'release/app/START HERE.txt'
           Set-Content -LiteralPath 'release/app/README.txt' -Encoding utf8 -Value @(
             'PC Cleaner / PC Companion — Windows x64 portable build',
@@ -60,6 +61,13 @@ jobs:
             '',
             ('SHA-256: ' + $digest)
           )
+      - name: Save interface test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interface-test
+          path: release/smoke*
+          if-no-files-found: ignore
       - name: Attach the download and publish release
         shell: pwsh
         env:
