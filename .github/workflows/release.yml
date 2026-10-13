@@ -1,0 +1,73 @@
+name: Build Windows download
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release tag (for example v1.0.0)
+        required: true
+        default: v1.0.0
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      RELEASE_TAG: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - name: Validate version and test cleanup policy
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Use a tag such as v1.0.0' }
+          dotnet run --project tests/EngineTests.csproj -c Release
+          if ($LASTEXITCODE -ne 0) { throw 'Engine checks failed' }
+      - name: Build portable Windows executable
+        shell: pwsh
+        run: |
+          dotnet publish PcCleaner.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -o release/app
+          if ($LASTEXITCODE -ne 0) { throw 'Build failed' }
+      - name: Check interface and package download
+        shell: pwsh
+        run: |
+          $smokeOutput = Join-Path $PWD 'release/smoke.png'
+          Start-Process -FilePath (Join-Path $PWD 'release/app/PC Companion.exe') -ArgumentList @('--ui-smoke-test',$smokeOutput) -WindowStyle Hidden -Wait
+          $result = Get-Content -LiteralPath ($smokeOutput + '.result.txt') -Raw
+          if (-not $result.StartsWith('PASS:')) { throw 'Interface smoke test failed' }
+          Set-Content -LiteralPath 'release/app/README.txt' -Encoding utf8 -Value @(
+            'PC Cleaner / PC Companion — Windows x64 portable build',
+            'Extract the ZIP, then open PC Companion.exe. No separate .NET installation is needed.',
+            'This build is unsigned; Windows may ask you to confirm running it.',
+            'Scan first and review files before cleaning. Deleted files are not sent to the Recycle Bin.',
+            'Source and cleanup policy: https://github.com/hedaprateek/pc-cleaner',
+            'Stunity Tech — by Prateek'
+          )
+          Compress-Archive -LiteralPath 'release/app/PC Companion.exe','release/app/README.txt' -DestinationPath 'release/PC-Cleaner-win-x64.zip'
+          $digest = (Get-FileHash -LiteralPath 'release/PC-Cleaner-win-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath 'release/notes.md' -Encoding utf8 -Value @(
+            'Portable Windows x64 build. Extract the ZIP and open PC Companion.exe. No separate .NET installation is required.',
+            '',
+            'Scan and review files before cleaning. Deleted files do not go to the Recycle Bin. This executable is unsigned; Windows may request confirmation.',
+            '',
+            ('SHA-256: ' + $digest)
+          )
+      - name: Attach the download and publish release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --draft --target $env:GITHUB_SHA --title ('PC Cleaner ' + $env:RELEASE_TAG + ' — Windows x64') --notes-file release/notes.md
+            if ($LASTEXITCODE -ne 0) { throw 'Could not create draft release' }
+          }
+          gh release upload $env:RELEASE_TAG release/PC-Cleaner-win-x64.zip --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Could not attach the download; existing assets were preserved' }
+          gh release edit $env:RELEASE_TAG --repo $env:GITHUB_REPOSITORY --notes-file release/notes.md --draft=false
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish the release' }

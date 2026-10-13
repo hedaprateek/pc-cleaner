@@ -2,6 +2,16 @@
 
 A native Windows utility for live computer information and conservative temporary-file cleanup.
 
+## Download
+
+Portable Windows x64 builds are published under [GitHub Releases](https://github.com/hedaprateek/pc-cleaner/releases).
+Extract `PC-Cleaner-win-x64.zip` and open `PC Companion.exe`. This is Windows software,
+not an Android APK. The executable is unsigned, so Windows may request confirmation.
+
+The **Build Windows download** workflow can create a release from the Actions tab.
+It runs the fixture tests, builds the portable executable, performs the read-only
+interface smoke test, and attaches the ZIP before making the release public.
+
 ## Open the app
 
 Double-click `launch.cmd`, or open `dist/win-x64/PC Companion.exe` directly. The published executable includes its .NET runtime, so the destination computer does not need a separate .NET installation. Use the x64 version on Intel/AMD Windows computers; build `win-arm64` for Windows ARM computers. This app does not support macOS or Linux.
