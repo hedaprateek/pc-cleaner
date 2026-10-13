@@ -39,6 +39,8 @@ internal static class Program
                         var path = tab == 0 ? target : Path.Combine(Path.GetDirectoryName(target)!, Path.GetFileNameWithoutExtension(target) + "-" + names[tab] + ".png");
                         using var output = File.Create(path); encoder.Save(output);
                     }
+                    // Exercise the smaller display used by hosted Windows runners locally too.
+                    window.MinWidth = Math.Min(window.MinWidth, 1024); window.MinHeight = Math.Min(window.MinHeight, 720);
                     window.Width = window.MinWidth; window.Height = window.MinHeight;
                     foreach (var tab in new[] { 0, 1, 3, 4 })
                     {
@@ -46,7 +48,7 @@ internal static class Program
                         if ((tab == 1 && window.ScanGrid.ActualHeight < 120)
                             || (tab == 3 && window.LargeFilesGrid.ActualHeight < 120)
                             || (tab == 4 && window.StartupGrid.ActualHeight < 120))
-                            throw new InvalidOperationException("Compact layout leaves too little room for results on tab " + tab);
+                            throw new InvalidOperationException($"Compact layout leaves too little room for results on tab {tab} at {window.ActualWidth}×{window.ActualHeight}.");
                         var bitmap = new RenderTargetBitmap((int)window.ActualWidth, (int)window.ActualHeight, 96, 96, PixelFormats.Pbgra32);
                         bitmap.Render(window);
                         var encoder = new PngBitmapEncoder(); encoder.Frames.Add(BitmapFrame.Create(bitmap));
