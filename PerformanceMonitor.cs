@@ -16,7 +16,7 @@ public sealed class PerformanceInsights
     {
         var result = new List<Insight>();
         result.Add(Sustained("CPU", metrics.Cpu, metrics.CpuAvailable, 85, 95, ref cpuHighSince, now,
-            "Check the Apps tab for sustained CPU usage. Close an app normally if you no longer need it."));
+            "Check Live apps for sustained CPU usage. Close an app normally if you no longer need it."));
         var ram = metrics.TotalMemory == 0 ? 0 : 100.0 * (metrics.TotalMemory - metrics.FreeMemory) / metrics.TotalMemory;
         result.Add(Sustained("RAM", ram, metrics.MemoryAvailable, 90, 95, ref memoryHighSince, now,
             "Review apps using the most memory. Close unused apps or browser tabs; temporary-file cleanup does not free their memory."));

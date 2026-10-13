@@ -1,4 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable></PropertyGroup>
-  <ItemGroup><Compile Include="../CleanupEngine.cs" Link="CleanupEngine.cs"/><Compile Include="../SystemInformation.cs" Link="SystemInformation.cs"/><Compile Include="../PerformanceMonitor.cs" Link="PerformanceMonitor.cs"/><Compile Include="../PreviewItem.cs" Link="PreviewItem.cs"/></ItemGroup>
+  <ItemGroup><Compile Include="../CleanupEngine.cs" Link="CleanupEngine.cs"/><Compile Include="../SystemInformation.cs" Link="SystemInformation.cs"/><Compile Include="../PerformanceMonitor.cs" Link="PerformanceMonitor.cs"/><Compile Include="../PreviewItem.cs" Link="PreviewItem.cs"/><Compile Include="../DiskActivityMonitor.cs" Link="DiskActivityMonitor.cs"/><Compile Include="../StorageAnalyzer.cs" Link="StorageAnalyzer.cs"/><Compile Include="../StartupReview.cs" Link="StartupReview.cs"/></ItemGroup>
 </Project>

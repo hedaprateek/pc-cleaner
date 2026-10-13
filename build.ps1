@@ -8,4 +8,5 @@ $env:DOTNET_CLI_HOME = Join-Path $taskRoot '.cli'
 $env:DOTNET_GENERATE_ASPNET_CERTIFICATE = 'false'
 & $sdk publish (Join-Path $taskRoot 'PcCleaner.csproj') -c Release -r $Runtime --self-contained true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false "-p:RestoreConfigFile=$taskRoot\NuGet.Config" "-p:RestorePackagesPath=$taskRoot\.nuget" -o (Join-Path $taskRoot "dist\$Runtime")
 if ($LASTEXITCODE -ne 0) { throw 'Build failed.' }
+Copy-Item -LiteralPath (Join-Path $taskRoot 'START HERE.txt') -Destination (Join-Path $taskRoot "dist\$Runtime\START HERE.txt") -Force
 Write-Host "Portable app ready in $taskRoot\dist\$Runtime"

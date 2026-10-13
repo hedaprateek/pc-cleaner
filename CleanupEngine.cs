@@ -15,6 +15,7 @@ public record FileFeedback(string Path, string Category, string Status, string R
 }
 public record ScanResult(List<Candidate> Files, int Skipped, bool Limited)
 {
+    public int MinimumAgeDays { get; init; } = CleanupEngine.MinimumAgeDays;
     public long Bytes => Files.Sum(f => f.Bytes);
     public List<FileFeedback> Entries { get; init; } = [];
     public int Inspected { get; init; }
@@ -48,13 +49,14 @@ public sealed class CleanupEngine
         return roots;
     }
 
-    public ScanResult Scan(IReadOnlyList<CleanupRoot> roots, CancellationToken token, IProgress<string>? progress = null)
+    public ScanResult Scan(IReadOnlyList<CleanupRoot> roots, CancellationToken token, IProgress<string>? progress = null, int minimumAgeDays = MinimumAgeDays)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(minimumAgeDays);
         var files = new List<Candidate>();
         var entries = new List<FileFeedback>();
         var skipped = 0;
         var inspected = 0;
-        var cutoff = DateTime.UtcNow.AddDays(-MinimumAgeDays);
+        var cutoff = DateTime.UtcNow.AddDays(-minimumAgeDays);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var target in roots)
         {
@@ -73,21 +75,22 @@ public sealed class CleanupEngine
                     foreach (var entry in Directory.EnumerateFileSystemEntries(directory))
                     {
                         token.ThrowIfCancellationRequested();
-                        if (++inspected > MaximumFiles) return new(files, skipped, true) { Entries = entries, Inspected = inspected - 1 };
-                        if (inspected % 250 == 0) progress?.Report($"Scanning {target.Name.ToLowerInvariant()}... {inspected:N0} entries checked, {files.Count:N0} old files found.");
+                        if (++inspected > MaximumFiles) return new(files, skipped, true) { Entries = entries, Inspected = inspected - 1, MinimumAgeDays = minimumAgeDays };
+                        if (inspected % 250 == 0) progress?.Report($"Scanning {target.Name.ToLowerInvariant()}... {inspected:N0} entries checked, {files.Count:N0} candidates found.");
                         try
                         {
                             var attributes = File.GetAttributes(entry);
                             if ((attributes & FileAttributes.ReparsePoint) != 0) { skipped++; entries.Add(new(entry, target.Name, "Skipped", "Linked file or directory; its target is not scanned.")); continue; }
                             if ((attributes & FileAttributes.Directory) != 0) { stack.Push(entry); continue; }
                             var info = new FileInfo(entry);
-                            if (info.LastWriteTimeUtc >= cutoff || info.CreationTimeUtc >= cutoff)
-                            { entries.Add(new(entry, target.Name, "Protected", "Created or modified within the last 7 days.", info.Length, info.LastWriteTimeUtc)); continue; }
+                            if (minimumAgeDays > 0 && (info.LastWriteTimeUtc >= cutoff || info.CreationTimeUtc >= cutoff))
+                            { entries.Add(new(entry, target.Name, "Protected", $"Created or modified within the last {minimumAgeDays} day(s). Choose a shorter cleanup age to include recent files.", info.Length, info.LastWriteTimeUtc)); continue; }
                             if (Contains(root, entry) && seen.Add(entry))
                             {
                                 files.Add(new(target.Name, root, entry, info.Length, info.LastWriteTimeUtc, info.CreationTimeUtc));
                                 var readOnly = (attributes & FileAttributes.ReadOnly) != 0;
-                                entries.Add(new(entry, target.Name, readOnly ? "Protected" : "Eligible", readOnly ? "Read-only file; it will be skipped." : "Older than 7 days. Availability and timestamps will be checked again before deletion.", info.Length, info.LastWriteTimeUtc));
+                                var ageReason = minimumAgeDays == 0 ? "No age restriction selected." : $"Created and modified more than {minimumAgeDays} day(s) ago.";
+                                entries.Add(new(entry, target.Name, readOnly ? "Protected" : "Eligible", readOnly ? "Read-only file; it will be skipped." : ageReason + " Availability and timestamps will be checked again before deletion.", info.Length, info.LastWriteTimeUtc));
                             }
                         }
                         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; entries.Add(new(entry, target.Name, "Skipped", e is UnauthorizedAccessException ? "Access denied while inspecting this entry." : "Entry is unavailable or changed during scanning.")); }
@@ -96,11 +99,12 @@ public sealed class CleanupEngine
                 catch (Exception e) when (e is IOException or UnauthorizedAccessException) { skipped++; entries.Add(new(directory, target.Name, "Skipped", e is UnauthorizedAccessException ? "Access denied while scanning this folder." : "Folder is unavailable or changed during scanning.")); }
             }
         }
-        return new(files, skipped, false) { Entries = entries, Inspected = inspected };
+        return new(files, skipped, false) { Entries = entries, Inspected = inspected, MinimumAgeDays = minimumAgeDays };
     }
 
     public CleanupResult Clean(ScanResult scan, IReadOnlyList<CleanupRoot> allowedRoots, CancellationToken token, IProgress<string>? progress = null)
     {
+        ArgumentOutOfRangeException.ThrowIfNegative(scan.MinimumAgeDays);
         var allowed = allowedRoots.Select(r => System.IO.Path.GetFullPath(r.Path).TrimEnd('\\')).ToHashSet(StringComparer.OrdinalIgnoreCase);
         int deleted = 0, skipped = 0, processed = 0;
         long bytes = 0;
@@ -130,9 +134,9 @@ public sealed class CleanupEngine
                 var modified = DateTime.FromFileTimeUtc(((long)info.WriteHigh << 32) | info.WriteLow);
                 var created = DateTime.FromFileTimeUtc(((long)info.CreationHigh << 32) | info.CreationLow);
                 var length = ((long)info.SizeHigh << 32) | info.SizeLow;
-                var cutoff = DateTime.UtcNow.AddDays(-MinimumAgeDays);
+                var cutoff = DateTime.UtcNow.AddDays(-scan.MinimumAgeDays);
                 if (!Contains(file.Root, resolved) || (info.Attributes & (uint)(FileAttributes.ReparsePoint | FileAttributes.Directory | FileAttributes.ReadOnly)) != 0
-                    || modified >= cutoff || created >= cutoff || modified != file.ModifiedUtc || created != file.CreatedUtc || length != file.Bytes)
+                    || (scan.MinimumAgeDays > 0 && (modified >= cutoff || created >= cutoff)) || modified != file.ModifiedUtc || created != file.CreatedUtc || length != file.Bytes)
                 { Skip(file, (info.Attributes & (uint)FileAttributes.ReadOnly) != 0 ? "Read-only file; left unchanged." : "File changed since scanning, is too recent, or its resolved location is not eligible."); continue; }
                 var disposition = new FileDisposition { Delete = true };
                 if (SetFileInformationByHandle(handle, 4, ref disposition, 1)) { deleted++; bytes += length; entries.Add(new(file.Path, file.Category, "Deleted", "Deleted after location, age, and availability checks.", length, modified)); }

@@ -11,5 +11,6 @@ dotnet-install.ps1
 dashboard-preview.png
 portable-preview.png
 v2-*.png
+v3-*.png
 *.png.result.txt
 release/

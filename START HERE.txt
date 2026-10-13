@@ -1,0 +1,47 @@
+PC COMPANION — GETTING STARTED
+
+OPEN YOUR DOWNLOAD
+1. Right-click PC-Cleaner-win-x64.zip and choose Extract All.
+2. Open the extracted folder, then double-click PC Companion.exe.
+3. The app includes its .NET runtime; you do not need to install .NET separately.
+4. The Getting started screen appears on your first visit. Pick a goal below.
+   You can reopen the guide using Help / Getting started or the sidebar.
+
+FREE SOME SPACE
+1. Open Clean up. Start with Your temporary files and Older than 7 days.
+2. Click 1. Scan first. Scanning does not delete anything.
+3. Review the list. Uncheck files you want to keep or exclude a folder.
+4. Click 2. Review, then clean when ready.
+   Deleted files do not go to the Recycle Bin. Quick Clean skips the preview.
+   Locked, changed, read-only and inaccessible files may remain; read the reasons.
+   Choosing All ages includes recent files. Close applications and review first.
+
+UNDERSTAND A SLOWDOWN
+1. Open Live apps and sort by Memory usage or CPU usage.
+2. Search or select an app to inspect its readings.
+3. Save work and close unused, familiar apps normally.
+4. Watch the readings again; use Task Manager to investigate if needed.
+   Avoid ending Windows or security processes. A brief spike can be normal.
+
+FIND LARGE FILES
+1. Open Storage explorer and choose a folder, or start with your user folder.
+2. Click Analyze folder and wait for the results.
+3. Select a folder or one of the largest files.
+4. Inspect the folder or open it in Explorer to review it.
+   This scan measures sizes and does not delete files. Partial results are labelled.
+
+REVIEW APPS AT SIGN-IN
+1. Open Startup review and read the three-step guide.
+2. Click Open Windows Startup apps.
+3. Turn off optional apps you do not need immediately after sign-in.
+4. Compare at your next sign-in. Turn an app back on if you need its automatic launch.
+   Keep security, backup, accessibility and device utilities you rely on.
+   The app lists registrations; Windows shows the available on/off controls.
+
+MORE HELP
+Overview shows live readings and a suggested next step. Counters need a few seconds
+to settle. Health insights explains sustained usage and low space. My computer has
+hardware details and report export. Cleanup history lists completed cleanups.
+Temporary-file cleanup can free space; it does not guarantee a faster computer.
+
+Stunity Tech — by Prateek

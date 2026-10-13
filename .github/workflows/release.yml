@@ -40,18 +40,21 @@ jobs:
           Start-Process -FilePath (Join-Path $PWD 'release/app/PC Companion.exe') -ArgumentList @('--ui-smoke-test',$smokeOutput) -WindowStyle Hidden -Wait
           $result = Get-Content -LiteralPath ($smokeOutput + '.result.txt') -Raw
           if (-not $result.StartsWith('PASS:')) { throw 'Interface smoke test failed' }
+          Copy-Item -LiteralPath 'START HERE.txt' -Destination 'release/app/START HERE.txt'
           Set-Content -LiteralPath 'release/app/README.txt' -Encoding utf8 -Value @(
             'PC Cleaner / PC Companion — Windows x64 portable build',
             'Extract the ZIP, then open PC Companion.exe. No separate .NET installation is needed.',
+            'Read START HERE.txt, or follow the Getting started screen inside the app. Help / Getting started reopens it.',
             'This build is unsigned; Windows may ask you to confirm running it.',
             'Scan first and review files before cleaning. Deleted files are not sent to the Recycle Bin.',
             'Source and cleanup policy: https://github.com/hedaprateek/pc-cleaner',
             'Stunity Tech — by Prateek'
           )
-          Compress-Archive -LiteralPath 'release/app/PC Companion.exe','release/app/README.txt' -DestinationPath 'release/PC-Cleaner-win-x64.zip'
+          Compress-Archive -LiteralPath 'release/app/PC Companion.exe','release/app/README.txt','release/app/START HERE.txt' -DestinationPath 'release/PC-Cleaner-win-x64.zip'
           $digest = (Get-FileHash -LiteralPath 'release/PC-Cleaner-win-x64.zip' -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -LiteralPath 'release/notes.md' -Encoding utf8 -Value @(
             'Portable Windows x64 build. Extract the ZIP and open PC Companion.exe. No separate .NET installation is required.',
+            'Start with the in-app Getting started guide. Step-by-step instructions are also included in START HERE.txt.',
             '',
             'Scan and review files before cleaning. Deleted files do not go to the Recycle Bin. This executable is unsigned; Windows may request confirmation.',
             '',

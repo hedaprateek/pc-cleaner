@@ -77,6 +77,95 @@ try
     var linkCandidate = new Candidate("Fixture temp", temp, Path.Combine(junction, "external.tmp"), new FileInfo(external).Length, File.GetLastWriteTimeUtc(external), File.GetCreationTimeUtc(external));
     Check(engine.Clean(new([linkCandidate], 0, false), roots, CancellationToken.None).Deleted == 0, "Candidate beneath a junction cannot be deleted");
     Directory.Delete(junction); // Remove only the junction itself; never recursively traverse it.
+    var ageTemp = Path.Combine(root, "age-policy"); Directory.CreateDirectory(ageTemp);
+    var ageRoots = new List<CleanupRoot> { new("Age fixture", ageTemp) };
+    var twoDays = Old(ageTemp, "two-days.tmp");
+    File.SetCreationTimeUtc(twoDays, DateTime.UtcNow.AddDays(-2));
+    File.SetLastWriteTimeUtc(twoDays, DateTime.UtcNow.AddDays(-2));
+    var copiedRecently = Old(ageTemp, "copied-recently.tmp"); File.SetCreationTimeUtc(copiedRecently, DateTime.UtcNow);
+    var recent = Path.Combine(ageTemp, "recent.tmp"); File.WriteAllText(recent, "Disposable recent fixture");
+    Check(engine.Scan(ageRoots, CancellationToken.None).Files.Count == 0, "Default still protects files created or modified within seven days");
+    var oneDayScan = engine.Scan(ageRoots, CancellationToken.None, minimumAgeDays: 1);
+    Check(oneDayScan.MinimumAgeDays == 1 && oneDayScan.Files.Count == 1 && oneDayScan.Files[0].Path == twoDays,
+        "One-day mode checks both creation and modification timestamps");
+    var oneDayResult = engine.Clean(oneDayScan, ageRoots, CancellationToken.None);
+    Check(oneDayResult.Deleted == 1 && !File.Exists(twoDays) && File.Exists(recent) && File.Exists(copiedRecently),
+        "Cleanup uses the scanned one-day policy rather than the seven-day default");
+    var recentLocked = Path.Combine(ageTemp, "recent-locked.tmp"); File.WriteAllText(recentLocked, "Keep while open");
+    var recentChanged = Path.Combine(ageTemp, "recent-changed.tmp"); File.WriteAllText(recentChanged, "Keep if changed");
+    var recentReadonly = Path.Combine(ageTemp, "recent-readonly.tmp"); File.WriteAllText(recentReadonly, "Keep read-only"); File.SetAttributes(recentReadonly, FileAttributes.ReadOnly);
+    var recentExcluded = Path.Combine(ageTemp, "recent-excluded.tmp"); File.WriteAllText(recentExcluded, "Keep excluded");
+    var recentJunction = Path.Combine(ageTemp, "linked");
+    command.ArgumentList.Clear(); command.ArgumentList.Add("/c"); command.ArgumentList.Add("mklink"); command.ArgumentList.Add("/J"); command.ArgumentList.Add(recentJunction); command.ArgumentList.Add(outside);
+    using (var process = System.Diagnostics.Process.Start(command)!) { process.WaitForExit(); Check(process.ExitCode == 0, "Created all-ages junction fixture"); }
+    try
+    {
+        var allScan = engine.Scan(ageRoots, CancellationToken.None, minimumAgeDays: 0);
+        Check(allScan.MinimumAgeDays == 0 && allScan.Files.Any(f => f.Path == recent) && allScan.Files.Any(f => f.Path == copiedRecently),
+            "All-ages mode includes recent and recently copied temporary files");
+        Check(allScan.Entries.Any(e => e.Path == recent && e.Status == "Eligible") && allScan.Entries.Any(e => e.Path == recentReadonly && e.Status == "Protected"),
+            "All-ages preview distinguishes recent eligible files from read-only protection");
+        Check(allScan.Files.All(f => !CleanupEngine.Contains(recentJunction, f.Path)), "All-ages scanning still skips junctions");
+        var selectedAll = CleanupSelection.Filter(allScan, [recentExcluded], []);
+        Check(selectedAll.MinimumAgeDays == 0, "Filtering exclusions preserves the scanned age policy");
+        File.AppendAllText(recentChanged, "changed");
+        using (var held = File.Open(recentLocked, FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite | FileShare.Delete))
+        {
+            var allResult = engine.Clean(selectedAll, ageRoots, CancellationToken.None);
+            Check(allResult.Deleted == 2 && !File.Exists(recent) && !File.Exists(copiedRecently), "All-ages cleanup actually deletes unchanged recent files");
+            Check(allResult.Skipped == 3 && File.Exists(recentLocked) && File.Exists(recentChanged) && File.Exists(recentReadonly) && File.Exists(recentExcluded),
+                "All-ages cleanup preserves open, changed, read-only, and excluded files");
+        }
+        var allForged = new ScanResult([forged], 0, false) { MinimumAgeDays = 0 };
+        Check(engine.Clean(allForged, roots, CancellationToken.None).Deleted == 0 && File.Exists(external), "All-ages cleanup rejects candidates outside the allowed root");
+        try { engine.Scan(ageRoots, CancellationToken.None, minimumAgeDays: -1); throw new Exception("Invalid age accepted"); }
+        catch (ArgumentOutOfRangeException) { Check(true, "Negative cleanup age is rejected"); }
+    }
+    finally { if (Directory.Exists(recentJunction)) Directory.Delete(recentJunction); }
+    var storageRoot = Path.Combine(root, "storage"); Directory.CreateDirectory(storageRoot);
+    var pictures = Path.Combine(storageRoot, "Pictures"); Directory.CreateDirectory(pictures);
+    var nestedPictures = Path.Combine(pictures, "Nested"); Directory.CreateDirectory(nestedPictures);
+    var nameCollision = Path.Combine(storageRoot, "Files in this folder"); Directory.CreateDirectory(nameCollision);
+    File.WriteAllBytes(Path.Combine(storageRoot, "root.bin"), new byte[100]);
+    File.WriteAllBytes(Path.Combine(pictures, "photo.bin"), new byte[400]);
+    File.WriteAllBytes(Path.Combine(nestedPictures, "nested.bin"), new byte[200]);
+    File.WriteAllBytes(Path.Combine(nameCollision, "other.bin"), new byte[50]);
+    var analyzer = new StorageAnalyzer();
+    var storage = analyzer.Analyze(storageRoot, CancellationToken.None);
+    Check(storage.Bytes == 750 && storage.Files == 4 && storage.Folders.Count == 3, "Storage totals include root files, nested files, and similarly named folders separately");
+    Check(storage.Folders[0].Name == "Pictures" && storage.Folders[0].Bytes == 600 && storage.Folders[0].Files == 2, "Storage folders aggregate recursively and sort largest first");
+    Check(Math.Abs(storage.Folders.Sum(f => f.Share) - 100) < 0.001 && storage.LargestFiles[0].Bytes == 400, "Storage shares and largest-file ordering use measured sizes");
+    var storageLink = Path.Combine(storageRoot, "linked");
+    command.ArgumentList.Clear(); command.ArgumentList.Add("/c"); command.ArgumentList.Add("mklink"); command.ArgumentList.Add("/J"); command.ArgumentList.Add(storageLink); command.ArgumentList.Add(outside);
+    using (var process = System.Diagnostics.Process.Start(command)!) { process.WaitForExit(); Check(process.ExitCode == 0, "Created storage junction fixture"); }
+    try
+    {
+        var withLink = analyzer.Analyze(storageRoot, CancellationToken.None);
+        Check(withLink.Bytes == 750 && withLink.Skipped == 1 && withLink.LargestFiles.All(f => !CleanupEngine.Contains(storageLink, f.Path)), "Storage analysis skips junction targets and reports incomplete totals");
+        try { analyzer.Analyze(storageLink, CancellationToken.None); throw new Exception("Linked storage root accepted"); }
+        catch (IOException) { Check(true, "Storage analysis rejects linked roots"); }
+    }
+    finally { Directory.Delete(storageLink); }
+    Check(analyzer.Analyze(storageRoot, CancellationToken.None, maximumEntries: 1).Limited, "Storage entry limit marks results as partial");
+    try { analyzer.Analyze(storageRoot, cancel.Token); throw new Exception("Storage ignored cancellation"); }
+    catch (OperationCanceledException) { Check(true, "Storage scanning honors cancellation"); }
+    for (int index = 0; index < 60; index++) File.WriteAllBytes(Path.Combine(storageRoot, $"rank-{index}.bin"), new byte[1000 + index]);
+    var largeStorage = analyzer.Analyze(storageRoot, CancellationToken.None);
+    Check(largeStorage.LargestFiles.Count == 50 && largeStorage.LargestFiles[0].Bytes == 1059 && largeStorage.LargestFiles[^1].Bytes == 1010, "Largest-file list keeps the actual top fifty files with bounded memory");
+    Check(Directory.EnumerateFiles(storageRoot, "*", SearchOption.AllDirectories).Count() == 64 && File.Exists(external), "Storage analysis leaves all fixture and outside files unchanged");
+    Check(DiskActivityMonitor.ValidValue(0, 42) == 42 && DiskActivityMonitor.ValidValue(1, 0) == 0
+        && DiskActivityMonitor.ValidValue(2, 0) == null && DiskActivityMonitor.ValidValue(0, -1) == null
+        && DiskActivityMonitor.ValidValue(0, double.NaN) == null, "Disk counter errors and invalid samples are unavailable rather than reported as healthy zeroes");
+    using (var disk = new DiskActivityMonitor())
+    {
+        Check(!disk.Sample().Available, "Disk throughput starts with a baseline rather than an invented initial rate");
+        await Task.Delay(200);
+        var diskSample = disk.Sample();
+        Check(!diskSample.Available || diskSample.TotalBytesPerSecond >= 0, "Windows disk samples are non-negative or explicitly unavailable");
+        disk.Dispose(); Check(!disk.Sample().Available, "Disposed disk queries stop sampling");
+    }
+    var startup = StartupReview.Read();
+    Check(startup.Entries.All(e => !string.IsNullOrWhiteSpace(e.Name) && !string.IsNullOrWhiteSpace(e.Command)) && startup.Skipped >= 0, "Startup registry and shortcut inventory is readable without executing commands");
     var systemInfo = new SystemInformation(); var metrics = systemInfo.ReadMetrics();
     Check(metrics.TotalMemory > 0 && metrics.FreeMemory <= metrics.TotalMemory, "Live RAM information is available");
     Check(SystemInformation.ReadDrives().Count > 0, "Drive information is available");
